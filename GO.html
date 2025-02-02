@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Такси Қызметі</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+       <style>
+        /* Жалпы фон мен негізгі стильдер */
+        body { 
+            font-family: 'Arial', sans-serif; 
+            background-color: #e9f0f4; 
+            margin: 0; padding: 0; 
+            color: #333;
+        }
+
+        /* Басты контейнер */
+        .container {
+            max-width: 900px; 
+            margin: auto; 
+            padding: 20px; 
+            background: #fff; 
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1); 
+            border-radius: 15px; 
+            margin-top: 40px;
+        }
+
+        /* Бас тақырып */
+        h1 { 
+            font-size: 28px; 
+            color: #333; 
+            text-align: center; 
+            margin-bottom: 20px;
+        }
+
+        /* Карта */
+        #map {
+            height: 400px; 
+            border-radius: 15px;
+            border: 2px solid #ddd;
+        }
+
+        /* Кнопка стилі */
+        button {
+            background-color: #4CAF50; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 16px;
+            margin-top: 20px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        /* Информация блоктары */
+        .info { 
+            font-size: 18px; 
+            margin: 15px 0; 
+            padding: 10px; 
+            background: #fff; 
+            border-radius: 10px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .info input {
+            border: none; 
+            height: 30px; 
+            width: 100%; 
+            margin-top: 10px;
+            padding-left: 10px;
+            border-radius: 5px;
+        }
+
+        /* Пассажирлердің Тапсырыстары бөлімі */
+        .orders {
+            font-size: 18px;
+            margin: 30px 0;
+            padding: 20px;
+            background: #fff;
+            border-radius: 15px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .order {
+            background: #f8f8f8; 
+            padding: 15px; 
+            margin-bottom: 20px;
+            border-radius: 8px; 
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Карталар үшін стиль */
+        .order-map { 
+            height: 250px; 
+            margin-top: 15px; 
+            border-radius: 10px; 
+            border: 2px solid #ddd;
+        }
+
+        /* Әр мобильді құрылғылар үшін стиль */
+        @media (max-width: 600px) {
+            .container {
+                width: 95%;
+                padding: 15px;
+            }
+
+            #map { height: 300px; }
+
+            .info, .orders { font-size: 16px; }
+        }
+    </style>
+    </style>
+</head>
+<body>
+   
+    <div class="container">
+        <h1>Такси Қызметі</h1>
+        <div id="map"></div>
+        <p class="info">А нүктесі: <span id="pointA">—</span></p>
+        <p class="info">B нүктесі: <span id="pointB">—</span></p>
+        <p class="info">Қашықтық: <span id="distance">0</span> м</p>
+        <p class="info">Бағасы: <span id="price">0</span> теңге</p>
+        <p class="info">Сипаттама: <span id="addressNotes"></span> <input type="text" id="addressDescription" placeholder="Мысалы: Жасыл вората және т.б"></p>
+        <button id="requestTaxi">Такси шақыру</button>
+    </div>
+    
+    <div class="container" id="orders">
+        <h2>Пассажирлердің Тапсырыстары</h2>
+        <div id="orderList" class="orders"></div>
+    </div>
+    
+    <script>
+        let map = L.map('map').setView([43.34045, 52.89090], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        let pointA = null, pointB = null;
+        let markerA, markerB;
+        let ordersData = [];  // Тапсырыстарды сақтау үшін массив
+        
+        // Мекенжайды алу функциясы
+        function getAddress(lat, lng, callback) {
+            fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.address) {
+                        const street = data.address.road || 'Мекенжай табылмады';
+                        const houseNumber = data.address.house_number || ''; // Үй нөмірі
+                        callback(`${street} ${houseNumber}`);
+                    } else {
+                        callback('Мекенжай табылмады');
+                    }
+                })
+                .catch(() => callback('Қателік орын алды'));
+        }
+        
+        map.on('click', function(e) {
+            let { lat, lng } = e.latlng;
+
+            if (!pointA) {
+                pointA = { lat, lng };
+                markerA = L.marker([lat, lng]).addTo(map).bindPopup("A нүктесі").openPopup();
+                getAddress(lat, lng, function(address) {
+                    document.getElementById('pointA').textContent = address; // Текстерде көрсету
+                });
+            } else if (!pointB) {
+                pointB = { lat, lng };
+                markerB = L.marker([lat, lng]).addTo(map).bindPopup("B нүктесі").openPopup();
+                getAddress(lat, lng, function(address) {
+                    document.getElementById('pointB').textContent = address; // Текстерде көрсету
+                });
+                calculateDistance();
+            }
+        });
+        
+        function calculateDistance() {
+            if (pointA && pointB) {
+                let R = 6371000;
+                let dLat = (pointB.lat - pointA.lat) * Math.PI / 180;
+                let dLng = (pointB.lng - pointA.lng) * Math.PI / 180;
+                let a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(pointA.lat * Math.PI / 180) * Math.cos(pointB.lat * Math.PI / 180) * Math.sin(dLng/2) * Math.sin(dLng/2);
+                let c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                let distance = R * c;
+                document.getElementById('distance').textContent = distance.toFixed(2);
+                document.getElementById('price').textContent = ((distance / 1000) * 9000).toFixed(2);
+            }
+        }
+        
+        document.getElementById('requestTaxi').addEventListener('click', function() {
+            if (pointA && pointB) {
+                let orders = document.getElementById('orderList');
+                let addressA = document.getElementById('pointA').textContent || 'A нүктесі белгіленген жоқ';
+                let addressB = document.getElementById('pointB').textContent || 'B нүктесі белгіленген жоқ';
+                let description = document.getElementById('addressDescription').value || 'Белгі жоқ'; // Пайдаланушының белгілері
+                document.getElementById('addressNotes').textContent = description; // Тапсырысқа қосылған белгілер
+                
+                // Тапсырыс мәліметтерін сақтау
+                let order = {
+                    addressA: addressA,
+                    addressB: addressB,
+                    description: description,
+                    pointA: pointA,
+                    pointB: pointB
+                };
+                ordersData.push(order);  // Тапсырыс қосу
+                
+                // Тапсырысты көрсету
+                let orderItem = document.createElement('div');
+                orderItem.classList.add('order');
+                orderItem.innerHTML = `<p>Тапсырыс: A (${addressA}) → B (${addressB}), Белгі: ${description}</p><div id="orderMap${ordersData.length}" class="order-map"></div>`;
+                orders.appendChild(orderItem);
+
+                // Жаңа тапсырыс картасын қосу
+                let orderMap = L.map(`orderMap${ordersData.length}`).setView([order.pointA.lat, order.pointA.lng], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(orderMap);
+
+                L.marker([order.pointA.lat, order.pointA.lng]).addTo(orderMap).bindPopup("A нүктесі").openPopup();
+                L.marker([order.pointB.lat, order.pointB.lng]).addTo(orderMap).bindPopup("B нүктесі").openPopup();
+
+                alert("Тапсырыс қабылданды!");
+            }
+        });
+    </script>
+</body>
+</html>
